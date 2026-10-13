@@ -125,7 +125,7 @@ class DataSet():
             scaler_y = MinMaxScaler(feature_range=(0, 1))
 
             self.X_train = scaler_X.fit_transform(self.X_train)
-            self.X_test = scaler_X.transform(self.X_train)
+            self.X_test = scaler_X.transform(self.X_test)
 
             # Нормализуем целевую переменную (ёмкость) тоже, если это нужно для обучения сети
             self.y_train = scaler_y.fit_transform(self.y_train.reshape(-1, 1)).ravel()
