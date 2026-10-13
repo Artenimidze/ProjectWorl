@@ -39,14 +39,26 @@ class NasaBatteryDataset:
     def _load_battery(self, name: str) -> pd.DataFrame:
         path = self.data_dir / f"{name}.mat"
         if not path.exists():
-            raise FileNotFoundError(f"Не найден файл {path}")
+            # ищем файл в подпапках (например, datasets/)
+            found = sorted(self.data_dir.rglob(f"{name}.mat"))
+            if not found:
+                raise FileNotFoundError(
+                    f"Не найден {name}.mat ни в {self.data_dir}, ни в его подпапках. "
+                    f"Положите .mat рядом с DataWork.py или передайте data_dir=..."
+                )
+            path = found[0]
 
         mat = loadmat(str(path), simplify_cells=True)
-        if name not in mat:
-            raise KeyError(f"В {path.name} нет ключа '{name}', есть: {list(mat.keys())}")
+        if name in mat:
+            key = name
+        else:
+            keys = [k_ for k_ in mat if not k_.startswith("__")]
+            if len(keys) != 1:
+                raise KeyError(f"В {path.name} нет ключа '{name}', есть: {list(mat.keys())}")
+            key = keys[0]
 
         rows, k = [], 0
-        for c in mat[name]["cycle"]:
+        for c in mat[key]["cycle"]:
             if c["type"] != "discharge":
                 continue
             k += 1
