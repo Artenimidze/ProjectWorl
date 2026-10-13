@@ -20,31 +20,39 @@ logging.basicConfig(level=logging.INFO)
 
 class Nasa_Battery_Dataset:
     """Датасет Nasa Battery Dataset"""
-    def __init__(self, path: Path | None = None):
+    def __init__(self, path: Path | None = None) -> None:
         self.path = path
         self.discharge_data = []
         if path is None:
             self.path = file / "datasets/Nasa Battery Dataset"
+        if not self.path.exists():
+            raise FileNotFoundError("Папка не найдена!")
         self._load_data()
 
-    def _load_data(self):
+    def _load_data(self) -> None:
         for matfile in self.path.glob("*.mat"):
             battery_name = matfile.stem
             mat = loadmat(matfile, simplify_cells=True)
-            discharge_cycles = []
+            if battery_name not in mat:
+                logger.warning(f"{matfile.name}: ключ {battery_name} не найден, пропуск")
+                continue
+
             cycles = mat[battery_name]["cycle"]
+            discharge_cycles = []
             cycle_num = 0
             for cycle in cycles:
-                if cycle['type'] == 'discharge':
-                    cycle_num += 1
-                    data = cycle['data']
-                    discharge_cycles.append({
-                        'cycle': cycle_num,
-                        'voltage': np.mean(data['Voltage_measured']),
-                        'current': np.mean(data['Current_measured']),
-                        'temperature': np.mean(data['Temperature_measured']),
-                        'capacity': float(data['Capacity']),
-                    })
+                if cycle['type'] != 'discharge':
+                    continue
+
+                cycle_num += 1
+                data = cycle['data']
+                discharge_cycles.append({
+                    'cycle': cycle_num,
+                    'voltage': np.mean(data['Voltage_measured']),
+                    'current': np.mean(data['Current_measured']),
+                    'temperature': np.mean(data['Temperature_measured']),
+                    'capacity': float(data['Capacity']),
+                })
             logger.info(f"{matfile} обработан")
             df = pd.DataFrame(discharge_cycles)
             self.discharge_data.append({
@@ -52,7 +60,7 @@ class Nasa_Battery_Dataset:
                 'data':df
             })
 
-    def get_battery(self, battery_id):
+    def get_battery(self, battery_id) -> dict[str, float]:
         for entry in self.discharge_data:
             if entry["battery_id"] == battery_id:
                 return entry["data"]
@@ -80,7 +88,7 @@ class Datasets(Enum):
     #NASA_SMAP_AND_MSL =
 
 class DataSet():
-    def __init__(self, dataset_type: Datasets, normalize: bool = True, test_split_ratio: float = 0.3):
+    def __init__(self, dataset_type: Datasets, normalize: bool = True, test_split_ratio: float = 0.3) -> None:
         """
         Работа с датасетами: обработка, нормализация, разделение на обучающую и тестовую выборки
         
@@ -95,6 +103,10 @@ class DataSet():
         self.X_test = None
         self.y_test = None
         self.y_train = None
+        if dataset_type is None:
+            raise ValueError("dataset_type не указан!")
+        if not isinstance(dataset_type, Datasets):
+            raise ValueError("dataset_type указан неверно! Используйте датасет из Datasets")
         self.dataset = dataset_type
         self.test_split(test_split_ratio)
         if normalize:
@@ -105,22 +117,26 @@ class DataSet():
         """
         Нормализует данные
         """
+        if self.dataset is None:
+            raise ValueError("Датасет не указан!")
         if self.dataset is Datasets.NASA_BATTERY_DATASET:
             # MinMaxScaler обучается ТОЛЬКО на тренировочных данных, чтобы избежать утечки
             scaler_X = MinMaxScaler(feature_range=(0, 1))
             scaler_y = MinMaxScaler(feature_range=(0, 1))
 
             self.X_train = scaler_X.fit_transform(self.X_train)
-            self.X_test = scaler_X.transform(self.X_train)
+            self.X_test = scaler_X.transform(self.X_test)
 
             # Нормализуем целевую переменную (ёмкость) тоже, если это нужно для обучения сети
             self.y_train = scaler_y.fit_transform(self.y_train.reshape(-1, 1)).ravel()
             self.y_test = scaler_y.transform(self.y_test.reshape(-1, 1)).ravel()
 
-    def test_split(self, ratio: float = 0.3):
+    def test_split(self, ratio: float = 0.3) -> None:
         """
         Делит данные на тестовую и обучающую
         """
+        if self.dataset is None:
+            raise ValueError("Датасет не указан!")
         if self.dataset is Datasets.NASA_BATTERY_DATASET:
             # Для этого датасета необходимо разделение LOBO (Leave One Battery Out)
             df_all = self.dataset.value.get_data()
